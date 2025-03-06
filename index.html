@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Tableau Extensions with d3.js Example</title>
+  <!-- Load d3.js -->
+  <script src="https://d3js.org/d3.v6.min.js"></script>
+  <!-- Load Tableau Extensions API -->
+  <script src="https://tableau.github.io/extensions-api/tableau.extensions.1.latest.js"></script>
+  <style>
+    body { font-family: sans-serif; }
+    svg { font: 10px sans-serif; }
+    .bar { fill: steelblue; }
+    .bar:hover { fill: darkorange; }
+  </style>
+</head>
+<body>
+  <h2>Tableau Extensions with d3.js Example</h2>
+  <p>This visualization will update when a simulated Tableau event occurs.</p>
+  <svg width="600" height="400"></svg>
+  
+  <script>
+    // --- Step 1: Draw the initial d3.js bar chart using mock data ---
+    function drawInitialChart(data) {
+      const svg = d3.select("svg");
+      const width = +svg.attr("width");
+      const height = +svg.attr("height");
+      const barWidth = width / data.length;
+      
+      svg.selectAll(".bar")
+         .data(data)
+         .enter().append("rect")
+         .attr("class", "bar")
+         .attr("x", (d, i) => i * barWidth)
+         .attr("y", d => height - d * 10)
+         .attr("width", barWidth - 1)
+         .attr("height", d => d * 10);
+    }
+    
+    // --- Step 2: Function to update the d3.js chart with new data ---
+    function updateD3Chart(newData) {
+      const svg = d3.select("svg");
+      const width = +svg.attr("width");
+      const height = +svg.attr("height");
+      const barWidth = width / newData.length;
+      
+      // Bind new data
+      const bars = svg.selectAll(".bar").data(newData);
+      
+      // Update existing bars with a smooth transition
+      bars.transition()
+          .duration(750)
+          .attr("y", d => height - d * 10)
+          .attr("height", d => d * 10);
+      
+      // Append new bars if needed
+      bars.enter().append("rect")
+          .attr("class", "bar")
+          .attr("x", (d, i) => i * barWidth)
+          .attr("y", d => height - d * 10)
+          .attr("width", barWidth - 1)
+          .attr("height", d => d * 10);
+      
+      // Remove any bars if the data set shrinks
+      bars.exit().remove();
+    }
+    
+    // --- Step 3: Process mock summary data (simulating Tableau data) ---
+    function processSummaryData(summaryData) {
+      // In a real scenario, you would transform Tableau's summary data.
+      // Here, we assume summaryData is already an array of numbers.
+      return summaryData;
+    }
+    
+    // --- Step 4: Update visualization based on a Tableau event ---
+    function updateVisualizationFromTableau(event) {
+      console.log("Tableau event received:", event);
+      // For this example, we generate new random mock data.
+      const mockNewData = [
+        Math.floor(Math.random() * 50) + 1,
+        Math.floor(Math.random() * 50) + 1,
+        Math.floor(Math.random() * 50) + 1,
+        Math.floor(Math.random() * 50) + 1,
+        Math.floor(Math.random() * 50) + 1,
+        Math.floor(Math.random() * 50) + 1
+      ];
+      const processedData = processSummaryData(mockNewData);
+      updateD3Chart(processedData);
+    }
+    
+    // --- Step 5: Initialize Tableau Extensions API and setup event listeners ---
+    function setupTableauExtension() {
+      // Check if we're in test mode (i.e., not embedded in Tableau)
+      if (tableau.extensions.environment.isTestMode) {
+        console.log("Test mode: simulating Tableau event in 3 seconds.");
+        // Simulate an event update after 3 seconds
+        setTimeout(() => updateVisualizationFromTableau("MockEvent"), 3000);
+      } else {
+        // Initialize the Tableau Extensions API
+        tableau.extensions.initializeAsync().then(function() {
+          console.log("Tableau Extensions API initialized.");
+          // Access the current dashboard
+          const dashboard = tableau.extensions.dashboardContent.dashboard;
+          // Add an event listener to each worksheet for filter changes
+          dashboard.worksheets.forEach(function(worksheet) {
+            worksheet.addEventListener(tableau.TableauEventType.FilterChanged, function(event) {
+              updateVisualizationFromTableau(event);
+            });
+          });
+        });
+      }
+    }
+    
+    // --- Initial rendering ---
+    const initialMockData = [4, 8, 15, 16, 23, 42];
+    drawInitialChart(initialMockData);
+    setupTableauExtension();
+  </script>
+</body>
+</html>
