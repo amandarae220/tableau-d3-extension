@@ -2,118 +2,209 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Tableau Extensions with d3.js Example</title>
+  <title>Sankey Diagram with Tableau Two‐Way Filtering</title>
   <!-- Load d3.js -->
   <script src="https://d3js.org/d3.v6.min.js"></script>
+  <!-- Load d3-sankey (using a CDN version) -->
+  <script src="https://unpkg.com/d3-sankey@0.12.3/dist/d3-sankey.min.js"></script>
   <!-- Load Tableau Extensions API -->
   <script src="https://tableau.github.io/extensions-api/tableau.extensions.1.latest.js"></script>
   <style>
     body { font-family: sans-serif; }
-    svg { font: 10px sans-serif; }
-    .bar { fill: steelblue; }
-    .bar:hover { fill: darkorange; }
+    .node rect {
+      cursor: pointer;
+      fill-opacity: .9;
+      shape-rendering: crispEdges;
+    }
+    .node text { pointer-events: none; font-size: 12px; }
+    .link {
+      fill: none;
+      stroke: #000;
+      stroke-opacity: .2;
+    }
+    .link:hover {
+      stroke-opacity: .5;
+    }
+    /* Tooltip style */
+    .tooltip {
+      position: absolute;
+      text-align: center;
+      padding: 6px;
+      font: 12px sans-serif;
+      background: lightsteelblue;
+      border: 0;
+      border-radius: 4px;
+      pointer-events: none;
+      opacity: 0;
+    }
   </style>
 </head>
 <body>
-  <h2>Tableau Extensions with d3.js Example</h2>
-  <p>This visualization will update when a simulated Tableau event occurs.</p>
-  <svg width="600" height="400"></svg>
-  
+  <h2>Sankey Diagram: Millennials vs. BabyBoomers</h2>
+  <p>This diagram updates when filters change in Tableau and sends node click events back to Tableau.</p>
+  <svg width="800" height="500"></svg>
+  <div class="tooltip"></div>
+
   <script>
-    // --- Step 1: Draw the initial d3.js bar chart using mock data ---
-    function drawInitialChart(data) {
-      const svg = d3.select("svg");
-      const width = +svg.attr("width");
-      const height = +svg.attr("height");
-      const barWidth = width / data.length;
-      
-      svg.selectAll(".bar")
-         .data(data)
-         .enter().append("rect")
-         .attr("class", "bar")
-         .attr("x", (d, i) => i * barWidth)
-         .attr("y", d => height - d * 10)
-         .attr("width", barWidth - 1)
-         .attr("height", d => d * 10);
+    // Dimensions for the SVG
+    const svgWidth = 800, svgHeight = 500;
+    const margin = { top: 20, right: 20, bottom: 20, left: 20 };
+
+    const svg = d3.select("svg")
+                  .attr("width", svgWidth)
+                  .attr("height", svgHeight);
+
+    const tooltip = d3.select(".tooltip");
+
+    // Set up the sankey generator
+    const sankey = d3.sankey()
+                     .nodeWidth(20)
+                     .nodePadding(10)
+                     .extent([[margin.left, margin.top], [svgWidth - margin.right, svgHeight - margin.bottom]]);
+
+    let sankeyData = null;  // Global variable for our sankey diagram data
+
+    // Function to build the sankey diagram given data (nodes and links)
+    function renderSankey(graph) {
+      svg.selectAll("*").remove(); // Clear any existing diagram
+
+      // Re-run the sankey layout
+      sankey(graph);
+
+      // Draw links
+      const link = svg.append("g")
+                      .selectAll(".link")
+                      .data(graph.links)
+                      .enter().append("path")
+                      .attr("class", "link")
+                      .attr("d", d3.sankeyLinkHorizontal())
+                      .attr("stroke-width", d => Math.max(1, d.width));
+
+      // Draw nodes
+      const node = svg.append("g")
+                      .selectAll(".node")
+                      .data(graph.nodes)
+                      .enter().append("g")
+                      .attr("class", "node")
+                      .attr("transform", d => `translate(${d.x0}, ${d.y0})`)
+                      .on("click", function(event, d) {
+                        // When a node is clicked, update the Tableau worksheet filter
+                        console.log("Node clicked:", d.name);
+                        applyTableauFilter(d.name);
+                        // Also, show a tooltip as feedback
+                        tooltip.transition().duration(200)
+                               .style("opacity", .9);
+                        tooltip.html("Filtering on: " + d.name)
+                               .style("left", (event.pageX) + "px")
+                               .style("top", (event.pageY - 28) + "px");
+                        setTimeout(() => tooltip.transition().duration(500).style("opacity", 0), 1500);
+                      });
+
+      // Node rectangles
+      node.append("rect")
+          .attr("height", d => d.y1 - d.y0)
+          .attr("width", d => d.x1 - d.x0)
+          .style("fill", d => d.color = d3.schemeCategory10[d.index % 10])
+          .style("stroke", "#000");
+
+      // Node labels
+      node.append("text")
+          .attr("x", -6)
+          .attr("y", d => (d.y1 - d.y0) / 2)
+          .attr("dy", "0.35em")
+          .attr("text-anchor", "end")
+          .text(d => d.name)
+          .filter(d => d.x0 < svgWidth / 2)
+          .attr("x", 6 + (d => d.x1 - d.x0))
+          .attr("text-anchor", "start");
     }
-    
-    // --- Step 2: Function to update the d3.js chart with new data ---
-    function updateD3Chart(newData) {
-      const svg = d3.select("svg");
-      const width = +svg.attr("width");
-      const height = +svg.attr("height");
-      const barWidth = width / newData.length;
-      
-      // Bind new data
-      const bars = svg.selectAll(".bar").data(newData);
-      
-      // Update existing bars with a smooth transition
-      bars.transition()
-          .duration(750)
-          .attr("y", d => height - d * 10)
-          .attr("height", d => d * 10);
-      
-      // Append new bars if needed
-      bars.enter().append("rect")
-          .attr("class", "bar")
-          .attr("x", (d, i) => i * barWidth)
-          .attr("y", d => height - d * 10)
-          .attr("width", barWidth - 1)
-          .attr("height", d => d * 10);
-      
-      // Remove any bars if the data set shrinks
-      bars.exit().remove();
+
+    // Function to load CSV data and build the sankey graph structure
+    function loadDataAndRender(filterValue = null) {
+      // Load the CSV file from the repository (ensure data.csv is hosted in your GitHub repo)
+      d3.csv("data.csv").then(function(data) {
+        // Optionally, filter data based on a passed filterValue (e.g. Generation = "Millenials")
+        if (filterValue) {
+          data = data.filter(d => d.source === filterValue || d.target === filterValue);
+        }
+
+        // Create a list of nodes by extracting unique names from source and target columns
+        const nodeNames = Array.from(new Set(data.flatMap(d => [d.source, d.target])));
+        const nodes = nodeNames.map(name => ({ name }));
+
+        // Create links by referencing the index of the source and target in the nodes array.
+        const links = data.map(d => ({
+          source: nodeNames.indexOf(d.source),
+          target: nodeNames.indexOf(d.target),
+          value: +d.value
+        }));
+
+        // Build the graph object for the sankey layout
+        sankeyData = { nodes: nodes, links: links };
+        renderSankey(sankeyData);
+      });
     }
-    
-    // --- Step 3: Process mock summary data (simulating Tableau data) ---
-    function processSummaryData(summaryData) {
-      // In a real scenario, you would transform Tableau's summary data.
-      // Here, we assume summaryData is already an array of numbers.
-      return summaryData;
-    }
-    
-    // --- Step 4: Update visualization based on a Tableau event ---
-    function updateVisualizationFromTableau(event) {
-      console.log("Tableau event received:", event);
-      // For this example, we generate new random mock data.
-      const mockNewData = [
-        Math.floor(Math.random() * 50) + 1,
-        Math.floor(Math.random() * 50) + 1,
-        Math.floor(Math.random() * 50) + 1,
-        Math.floor(Math.random() * 50) + 1,
-        Math.floor(Math.random() * 50) + 1,
-        Math.floor(Math.random() * 50) + 1
-      ];
-      const processedData = processSummaryData(mockNewData);
-      updateD3Chart(processedData);
-    }
-    
-    // --- Step 5: Initialize Tableau Extensions API and setup event listeners ---
-    function setupTableauExtension() {
-      // Check if we're in test mode (i.e., not embedded in Tableau)
-      if (tableau.extensions.environment.isTestMode) {
-        console.log("Test mode: simulating Tableau event in 3 seconds.");
-        // Simulate an event update after 3 seconds
-        setTimeout(() => updateVisualizationFromTableau("MockEvent"), 3000);
+
+    // --- Two-Way Filtering: Tableau Integration ---
+
+    // Global variable to hold a reference to a target Tableau worksheet.
+    let targetWorksheet = null;
+
+    // Function to apply a filter back to Tableau.
+    function applyTableauFilter(filterValue) {
+      if (targetWorksheet) {
+        // Replace the filter for the field "Generation" (adjust the field name as needed)
+        targetWorksheet.applyFilterAsync("Generation", filterValue, tableau.FilterUpdateType.Replace)
+          .then(() => {
+            console.log("Applied filter to Tableau:", filterValue);
+          })
+          .catch(err => console.error("Error applying filter:", err));
       } else {
-        // Initialize the Tableau Extensions API
+        console.warn("Tableau worksheet reference not available.");
+      }
+    }
+
+    // Function to update the visualization from a Tableau event (e.g., filter change)
+    function updateVisualizationFromTableau(event) {
+      console.log("Received Tableau event:", event);
+      // For illustration, assume the event provides a filter value in event.detail.filterValue.
+      // (In practice, you would extract the filter criteria from the event.)
+      let filterValue = event.detail ? event.detail.filterValue : null;
+      console.log("Updating Sankey diagram with filter:", filterValue);
+      loadDataAndRender(filterValue);
+    }
+
+    // Initialize the Tableau Extensions API and set up two‐way filtering
+    function setupTableauExtension() {
+      // Check if running in test mode (not embedded in Tableau)
+      if (tableau.extensions.environment.isTestMode) {
+        console.log("Test mode: simulating Tableau filter event in 3 seconds.");
+        // Simulate an event that filters on "Millenials" after 3 seconds.
+        setTimeout(() => {
+          updateVisualizationFromTableau({ detail: { filterValue: "Millenials" } });
+        }, 3000);
+      } else {
         tableau.extensions.initializeAsync().then(function() {
           console.log("Tableau Extensions API initialized.");
-          // Access the current dashboard
+          // Assume we want to work with the first worksheet of the dashboard.
           const dashboard = tableau.extensions.dashboardContent.dashboard;
-          // Add an event listener to each worksheet for filter changes
+          targetWorksheet = dashboard.worksheets[0];
+
+          // Listen for filter change events on all worksheets.
           dashboard.worksheets.forEach(function(worksheet) {
             worksheet.addEventListener(tableau.TableauEventType.FilterChanged, function(event) {
+              // In a real scenario, inspect the event to decide what filter value to use.
+              // For this example, we assume the filter value is passed in a similar manner.
               updateVisualizationFromTableau(event);
             });
           });
         });
       }
     }
-    
-    // --- Initial rendering ---
-    const initialMockData = [4, 8, 15, 16, 23, 42];
-    drawInitialChart(initialMockData);
+
+    // --- Initialization ---
+    // Initially load all data (with no filter applied)
+    loadDataAndRender();
     setupTableauExtension();
   </script>
 </body>
